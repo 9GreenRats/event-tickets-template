@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { coverUrl, naira, type Tier } from '@/lib/db';
+import { placeholder } from '@/lib/placeholder';
 import Modal from '../Modal';
 
 interface EventFull {
@@ -128,6 +129,8 @@ export default function AdminPage() {
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 16 }}>
+          <SiteEditor auth={auth} />
+          <PaymentsCard auth={auth} />
           <EventEditor
             key={active.id}
             event={active}
@@ -184,6 +187,111 @@ export default function AdminPage() {
 
 function supabase() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
+}
+
+function PaymentsCard({ auth }: { auth: () => Record<string, string> }) {
+  const [info, setInfo] = useState<{ paystack_set: boolean; webhook_url: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    fetch('/api/admin/payments', { headers: auth() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then(setInfo)
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <div style={card}>
+      <h2 style={h2}>Payments — your Paystack</h2>
+      <p className="small" style={{ margin: '0 0 12px' }}>
+        Buyer money goes to your bank. Your secret key lives in hosting env — set once at launch.
+      </p>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <span className="micro">Status</span>
+        <span className="micro" style={statusPill}>{info ? (info.paystack_set ? 'Connected' : 'Missing — paid tiers wait') : '…'}</span>
+      </div>
+      <label className="field-label">Webhook URL — paste in Paystack → Settings → Webhooks</label>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <code style={{ fontFamily: 'var(--font-mono)', fontSize: '0.8125rem', background: 'var(--fw-mist)', border: '1px solid var(--fw-line)', borderRadius: 6, padding: '8px 12px', wordBreak: 'break-all' }}>
+          {info?.webhook_url || '…'}
+        </code>
+        <button
+          className="btn-secondary btn"
+          style={{ minHeight: 36, padding: '6px 14px' }}
+          onClick={() => {
+            if (!info?.webhook_url) return;
+            navigator.clipboard.writeText(info.webhook_url).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            });
+          }}
+        >
+          {copied ? 'Copied' : 'Copy'}
+        </button>
+      </div>
+      <p className="micro" style={{ marginTop: 8 }}>Without it a buyer can pay and the ticket will not be marked as paid.</p>
+    </div>
+  );
+}
+
+function SiteEditor({ auth }: { auth: () => Record<string, string> }) {
+  const [name, setName] = useState('');
+  const [tagline, setTagline] = useState('');
+  const [description, setDescription] = useState('');
+  const [notice, setNotice] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/admin/site', { headers: auth() })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (!d?.site) return;
+        setName(d.site.site_name || '');
+        setTagline(d.site.tagline || '');
+        setDescription(d.site.description || '');
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const save = async () => {
+    setBusy(true);
+    setNotice('');
+    try {
+      const res = await fetch('/api/admin/site', {
+        method: 'PATCH', headers: auth(),
+        body: JSON.stringify({ site_name: name, tagline, description }),
+      });
+      if (!res.ok) throw new Error();
+      setNotice('Saved — shows on the About page.');
+    } catch {
+      setNotice('Save failed.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={card}>
+      <h2 style={h2}>Site & About page</h2>
+      <div style={{ marginBottom: 12 }}>
+        <label className="field-label">Site name</label>
+        <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Lagos Nights" />
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <label className="field-label">Tagline</label>
+        <input className="input" value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="One line under the name" />
+      </div>
+      <div>
+        <label className="field-label">About text</label>
+        <textarea className="input" rows={4} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Who runs these nights, and why come." />
+      </div>
+      {notice && <p role="status" className="small" style={{ marginTop: 8 }}>{notice}</p>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button className="btn" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save site'}</button>
+        <a href="/about" target="_blank" rel="noreferrer" className="small">View About page →</a>
+      </div>
+    </div>
+  );
 }
 
 function NewEventModal({ auth, onClose, onCreated }: { auth: () => Record<string, string>; onClose: () => void; onCreated: (id: string) => void }) {
@@ -286,9 +394,15 @@ function EventEditor({ event, auth, reload, onDelete }: { event: EventFull; auth
         <span className="micro" style={statusPill}>{event.status}</span>
         <span className="micro" style={{ fontFamily: 'var(--font-mono)' }}>/e/{event.slug}</span>
       </div>
-      {event.cover_path && (
+      {event.cover_path ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={coverUrl(event.cover_path) || ''} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 'var(--r-md)', marginBottom: 12 }} />
+      ) : (
+        <div style={{ marginBottom: 12 }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={placeholder(event.slug, { initial: event.title, wide: false })} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'cover', borderRadius: 'var(--r-md)', opacity: 0.9 }} />
+          <p className="micro" style={{ marginTop: 6 }}>Auto artwork — replaced the moment you upload a cover.</p>
+        </div>
       )}
       <label className="field-label" htmlFor={`cover-${event.id}`}>Cover image (PNG/JPEG/WebP, under 2MB)</label>
       <input id={`cover-${event.id}`} type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading} onChange={(e) => onCover(e.target.files?.[0])} />

@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap');
+/* Fonts load via next/font in layout.tsx (--font-display/sans/mono).
+   No @import here: it breaks the dev CSS pipeline and blocks rendering. */
 
 :root {
   --fw-paper: #EFECE5;
@@ -16,9 +17,7 @@
   --fw-success-bg: #E2F4E9;
   --fw-warn: #8F5407;
   --fw-warn-bg: #FBEFD7;
-  --font-display: 'Bricolage Grotesque', 'Geist', system-ui, sans-serif;
-  --font-sans: 'Geist', system-ui, sans-serif;
-  --font-mono: 'Geist Mono', ui-monospace, monospace;
+  /* --font-display/sans/mono come from next/font (layout <html> class). */
   --r-md: 10px;
   --r-lg: 14px;
   --r-xl: 20px;
@@ -29,6 +28,7 @@
 
 html, body {
   margin: 0;
+  overflow-x: clip;
   font-family: var(--font-sans);
   color: var(--fw-ink);
   background: var(--fw-paper);
